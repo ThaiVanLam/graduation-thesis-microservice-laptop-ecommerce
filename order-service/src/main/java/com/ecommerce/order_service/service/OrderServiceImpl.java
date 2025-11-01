@@ -1,11 +1,13 @@
 package com.ecommerce.order_service.service;
 
 
+import com.ecommerce.order_service.client.ProductServiceClient;
 import com.ecommerce.order_service.exceptions.APIException;
 import com.ecommerce.order_service.exceptions.ResourceNotFoundException;
 import com.ecommerce.order_service.model.*;
 import com.ecommerce.order_service.payload.OrderDTO;
 import com.ecommerce.order_service.payload.OrderItemDTO;
+import com.ecommerce.order_service.payload.ProductDTO;
 import com.ecommerce.order_service.repositories.CartRepository;
 import com.ecommerce.order_service.repositories.OrderItemRepository;
 import com.ecommerce.order_service.repositories.OrderRepository;
@@ -17,6 +19,8 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -24,22 +28,19 @@ public class OrderServiceImpl implements OrderService {
     private CartRepository cartRepository;
 
     @Autowired
-    private AddressRepository addressRepository;
-
-    @Autowired
     private OrderRepository orderRepository;
 
     @Autowired
-    OrderItemRepository orderItemRepository;
+    private OrderItemRepository orderItemRepository;
 
     @Autowired
     private CartService cartService;
 
     @Autowired
-    private ProductRepository productRepository;
+    private ModelMapper modelMapper;
 
     @Autowired
-    private ModelMapper modelMapper;
+    private ProductServiceClient productServiceClient;
 
     @Override
     @Transactional
@@ -49,14 +50,16 @@ public class OrderServiceImpl implements OrderService {
             throw new ResourceNotFoundException("Cart", "email", emailId);
         }
 
-        Address address = addressRepository.findById(addressId).orElseThrow(() -> new ResourceNotFoundException("Address", "addressId", addressId));
+        if (cart.getCartItems().isEmpty()) {
+            throw new APIException("Cart is empty");
+        }
 
         Order order = new Order();
         order.setEmail(emailId);
         order.setOrderDate(LocalDate.now());
         order.setTotalAmount(cart.getTotalPrice());
         order.setOrderStatus("Order Accepted !");
-        order.setAddress(address);
+        order.setAddressId(addressId);
 
         Payment payment = new Payment(paymentMethod, pgPaymentId, pgStatus, pgResponseMessage, pgName);
         payment.setOrder(order);
@@ -64,15 +67,11 @@ public class OrderServiceImpl implements OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
-        List<CartItem> cartItems = cart.getCartItems();
-        if (cartItems.isEmpty()) {
-            throw new APIException("Cart is empty");
-        }
-
         List<OrderItem> orderItems = new ArrayList<>();
-        for (CartItem cartItem : cartItems) {
+
+        for (CartItem cartItem : cart.getCartItems()) {
             OrderItem orderItem = new OrderItem();
-            orderItem.setProduct(cartItem.getProduct());
+            orderItem.setProductSnapshot(cartItem.getProductSnapshot());
             orderItem.setQuantity(cartItem.getQuantity());
             orderItem.setDiscount(cartItem.getDiscount());
             orderItem.setOrderedProductPrice(cartItem.getProductPrice());
@@ -84,24 +83,36 @@ public class OrderServiceImpl implements OrderService {
 
         cart.getCartItems().forEach(item -> {
             int quantity = item.getQuantity();
-            Product product = item.getProduct();
-
-            // Reduce stock quantity
-            product.setQuantity(product.getQuantity() - quantity);
-
-            // Save product back to the database
-            productRepository.save(product);
-
-            // Remove items from cart
-            cartService.deleteProductFromCart(cart.getCartId(), item.getProduct().getProductId());
+            productServiceClient.reduceProductQuantity(item.getProductSnapshot().getProductId(), quantity);
+            cartService.deleteProductFromCart(cart.getCartId(), item.getProductSnapshot().getProductId());
         });
 
-        // send back the order summary
-        OrderDTO orderDTO = modelMapper.map(savedOrder, OrderDTO.class);
-        orderItems.forEach(item -> orderDTO.getOrderItems().add(modelMapper.map(item, OrderItemDTO.class)));
 
+        OrderDTO orderDTO = modelMapper.map(savedOrder, OrderDTO.class);
+        orderDTO.setOrderItems(orderItems.stream().filter(Objects::nonNull).map(this::mapToOrderItemDTO).collect(Collectors.toList()));
         orderDTO.setAddressId(addressId);
 
         return orderDTO;
+    }
+
+    private OrderItemDTO mapToOrderItemDTO(OrderItem orderItem) {
+        OrderItemDTO dto = new OrderItemDTO();
+        dto.setOrderItemId(orderItem.getOrderItemId());
+        dto.setQuantity(orderItem.getQuantity());
+        dto.setDiscount(orderItem.getDiscount());
+        dto.setOrderedProductPrice(orderItem.getOrderedProductPrice());
+
+        ProductDTO productDTO = new ProductDTO();
+        if (orderItem.getProductSnapshot() != null) {
+            productDTO.setProductId(orderItem.getProductSnapshot().getProductId());
+            productDTO.setProductName(orderItem.getProductSnapshot().getProductName());
+            productDTO.setImage(orderItem.getProductSnapshot().getImage());
+            productDTO.setPrice(orderItem.getProductSnapshot().getPrice() == null ? 0.0 : orderItem.getProductSnapshot().getPrice());
+            productDTO.setDiscount(orderItem.getProductSnapshot().getDiscount() == null ? 0.0 : orderItem.getProductSnapshot().getDiscount());
+            productDTO.setSpecialPrice(orderItem.getProductSnapshot().getSpecialPrice() == null ? 0.0 : orderItem.getProductSnapshot().getSpecialPrice());
+            productDTO.setQuantity(orderItem.getQuantity());
+        }
+        dto.setProduct(productDTO);
+        return dto;
     }
 }

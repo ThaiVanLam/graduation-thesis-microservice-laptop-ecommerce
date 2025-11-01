@@ -2,6 +2,7 @@ package com.ecommerce.product_service.controller;
 
 
 import com.ecommerce.product_service.config.AppConstants;
+import com.ecommerce.product_service.payload.InventoryUpdateRequest;
 import com.ecommerce.product_service.payload.ProductDTO;
 import com.ecommerce.product_service.payload.ProductResponse;
 import com.ecommerce.product_service.service.ProductService;
@@ -61,5 +62,16 @@ public class ProductController {
 
         ProductDTO updatedProduct = productService.updateProductImage(productId, image);
         return new ResponseEntity<>(updatedProduct, HttpStatus.OK);
+    }
+
+    @GetMapping("/internal/products/{productId}")
+    public ResponseEntity<ProductDTO> getProduct(@PathVariable Long productId) {
+        return ResponseEntity.ok(productService.getProduct(productId));
+    }
+
+    @PostMapping("/internal/products/{productId}/reduce-stock")
+    public ResponseEntity<Void> reduceProductStock(@PathVariable Long productId, @RequestBody InventoryUpdateRequest request) {
+        productService.reduceProductQuantity(productId, request.getQuantity());
+        return ResponseEntity.accepted().build();
     }
 }

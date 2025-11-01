@@ -32,9 +32,7 @@ public class Order {
     private Double totalAmount;
     private String orderStatus;
 
-    @ManyToOne
-    @JoinColumn(name = "address_id")
-    private Address address;
+    private Long addressId;
 
     @OneToOne(cascade = {CascadeType.PERSIST})
     @JoinColumn(name = "payment_id")

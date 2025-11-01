@@ -1,3 +1,22 @@
 spring:
   application:
     name: product-service
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/ecommerce_thesis_project_spring_boot_db_test_codex?serverTimezone=UTC
+    username: root
+    password: thailam123
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+project:
+  image: images/
+
+image:
+  base:
+    url: http://localhost:8080/images
+
+server:
+  port: 8081

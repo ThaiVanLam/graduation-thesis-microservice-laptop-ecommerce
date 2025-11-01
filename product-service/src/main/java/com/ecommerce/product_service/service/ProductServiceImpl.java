@@ -26,12 +26,6 @@ import java.util.List;
 @Service
 public class ProductServiceImpl implements ProductService {
     @Autowired
-    private CartRepository cartRepository;
-
-    @Autowired
-    private CartService cartService;
-
-    @Autowired
     private ProductRepository productRepository;
 
     @Autowired
@@ -51,31 +45,28 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public ProductDTO addProduct(Long categoryId, ProductDTO productDTO) {
-        //check if product already present or not
-
         Category category = categoryRepository.findById(categoryId).orElseThrow(() -> new ResourceNotFoundException("Category", "categoryId", categoryId));
 
-        boolean isProductNotPresent = true;
+        boolean isProductNotPresent = category.getProducts().stream()
+                .noneMatch(product -> product.getProductName().equalsIgnoreCase(productDTO.getProductName()));
 
-        List<Product> products = category.getProducts();
-        for (Product product : products) {
-            if (product.getProductName().equals(productDTO.getProductName())) {
-                isProductNotPresent = false;
-                break;
-            }
-        }
-
-        if (isProductNotPresent) {
-            Product product = modelMapper.map(productDTO, Product.class);
-            product.setImage("default.png");
-            product.setCategory(category);
-            double specialPrice = product.getPrice() - (product.getDiscount() * 0.01) * product.getPrice();
-            product.setSpecialPrice(specialPrice);
-            Product savedProduct = productRepository.save(product);
-            return modelMapper.map(savedProduct, ProductDTO.class);
-        } else {
+        if (!isProductNotPresent) {
             throw new APIException("Product already exist!!");
         }
+
+        Product product = modelMapper.map(productDTO, Product.class);
+        product.setImage("default.png");
+        product.setCategory(category);
+        product.setSpecialPrice(calculateSpecialPrice(product.getPrice(), product.getDiscount()));
+
+        Product savedProduct = productRepository.save(product);
+        ProductDTO savedDto = modelMapper.map(savedProduct, ProductDTO.class);
+        savedDto.setImage(constructImageUrl(savedProduct.getImage()));
+        return savedDto;
+    }
+
+    private double calculateSpecialPrice(double price, double discount) {
+        return price - (discount * 0.01) * price;
     }
 
     @Override
@@ -90,8 +81,8 @@ public class ProductServiceImpl implements ProductService {
             spec = spec.and((root, query, criteriaBuilder) -> criteriaBuilder.like(criteriaBuilder.lower(root.get("productName")), "%" + keyword.toLowerCase() + "%"));
         }
 
-        if(category != null && !category.isEmpty()){
-            spec = spec.and((root, query, criteriaBuilder) -> criteriaBuilder.like(criteriaBuilder.lower(root.get("category").get("categoryName")),category));
+        if (category != null && !category.isEmpty()) {
+            spec = spec.and((root, query, criteriaBuilder) -> criteriaBuilder.like(criteriaBuilder.lower(root.get("category").get("categoryName")), category.toLowerCase()));
         }
 
         Page<Product> productPage = productRepository.findAll(spec, pageable);
@@ -102,11 +93,7 @@ public class ProductServiceImpl implements ProductService {
             throw new APIException("No Products Exist!!!");
         }
 
-        List<ProductDTO> productDTOS = products.stream().map(product -> {
-            ProductDTO productDTO = modelMapper.map(product, ProductDTO.class);
-            productDTO.setImage(constructImageUrl(product.getImage()));
-            return productDTO;
-        }).toList();
+        List<ProductDTO> productDTOS = products.stream().map(this::mapToDtoWithImage).toList();
 
         ProductResponse productResponse = new ProductResponse();
         productResponse.setContent(productDTOS);
@@ -116,6 +103,12 @@ public class ProductServiceImpl implements ProductService {
         productResponse.setTotalPages(productPage.getTotalPages());
         productResponse.setLastPage(productPage.isLast());
         return productResponse;
+    }
+
+    private ProductDTO mapToDtoWithImage(Product product) {
+        ProductDTO productDTO = modelMapper.map(product, ProductDTO.class);
+        productDTO.setImage(constructImageUrl(product.getImage()));
+        return productDTO;
     }
 
     private String constructImageUrl(String imageName) {
@@ -181,27 +174,16 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public ProductDTO updateProduct(Long productId, ProductDTO productDTO) {
         Product productFromDB = productRepository.findById(productId).orElseThrow(() -> new ResourceNotFoundException("Product", "productId", productId));
-        Product product = modelMapper.map(productDTO, Product.class);
-        productFromDB.setProductName(product.getProductName());
-        productFromDB.setDescription(product.getDescription());
-        productFromDB.setQuantity(product.getQuantity());
-        productFromDB.setDiscount(product.getDiscount());
-        productFromDB.setPrice(product.getPrice());
-        productFromDB.setSpecialPrice(product.getSpecialPrice());
+
+        productFromDB.setProductName(productDTO.getProductName());
+        productFromDB.setDescription(productDTO.getDescription());
+        productFromDB.setQuantity(productDTO.getQuantity());
+        productFromDB.setDiscount(productDTO.getDiscount());
+        productFromDB.setPrice(productDTO.getPrice());
+        productFromDB.setSpecialPrice(calculateSpecialPrice(productDTO.getPrice(), productDTO.getDiscount()));
 
         Product savedProduct = productRepository.save(productFromDB);
-
-        List<Cart> carts = cartRepository.findCartsByProductId(productId);
-
-        List<CartDTO> cartDTOS = carts.stream().map(cart -> {
-            CartDTO cartDTO = modelMapper.map(carts, CartDTO.class);
-            List<ProductDTO> productDTOS = cart.getCartItems().stream().map(ci -> modelMapper.map(ci.getProduct(), ProductDTO.class)).toList();
-            cartDTO.setProducts(productDTOS);
-            return cartDTO;
-        }).toList();
-
-        cartDTOS.forEach(cart -> cartService.updateProductInCarts(cart.getCartId(), productId));
-        return modelMapper.map(savedProduct, ProductDTO.class);
+        return mapToDtoWithImage(savedProduct);
     }
 
 
@@ -209,12 +191,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductDTO deleteProduct(Long productId) {
         Product product = productRepository.findById(productId).orElseThrow(() -> new ResourceNotFoundException("Product", "productId", productId));
 
-        List<Cart> carts = cartRepository.findCartsByProductId(productId);
-
-        carts.forEach(cart -> cartService.deleteProductFromCart(cart.getCartId(), productId));
-
-        productRepository.delete(product);
-        return modelMapper.map(product, ProductDTO.class);
+        return mapToDtoWithImage(product);
     }
 
     @Override
@@ -225,8 +202,28 @@ public class ProductServiceImpl implements ProductService {
         productFromDB.setImage(fileName);
 
         Product updatedProduct = productRepository.save(productFromDB);
-        return modelMapper.map(updatedProduct, ProductDTO.class);
+        return mapToDtoWithImage(updatedProduct);
     }
 
+    @Override
+    public ProductDTO getProduct(Long productId) {
+        Product product = productRepository.findById(productId).orElseThrow(() -> new ResourceNotFoundException("Product", "productId", productId));
+        return mapToDtoWithImage(product);
+    }
+
+    @Override
+    public void reduceProductQuantity(Long productId, int quantity) {
+        Product product = productRepository.findById(productId).orElseThrow(() -> new ResourceNotFoundException("Product", "productId", productId));
+        if (quantity < 0) {
+            throw new APIException("Quantity must be positive");
+        }
+        if (product.getQuantity() < quantity) {
+            throw new APIException("Insufficient product quantity");
+        }
+        product.setQuantity(product.getQuantity() - quantity);
+        productRepository.save(product);
+    }
+
+    
 
 }

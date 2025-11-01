@@ -19,9 +19,11 @@ public class CartItem {
     @JoinColumn(name = "cart_id")
     private Cart cart;
 
-    @ManyToOne
-    @JoinColumn(name = "product_id")
-    private Product product;
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "discount", column = @Column(name = "product_discount"))
+    })
+    private ProductSnapshot productSnapshot;
 
     private Integer quantity;
     private Double discount;

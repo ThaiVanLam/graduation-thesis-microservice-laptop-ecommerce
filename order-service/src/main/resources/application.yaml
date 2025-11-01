@@ -1,3 +1,15 @@
 spring:
   application:
     name: order-service
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/ecommerce_thesis_project_spring_boot_db_test_codex?serverTimezone=UTC
+    username: root
+    password: thailam123
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+server:
+  port: 8083
