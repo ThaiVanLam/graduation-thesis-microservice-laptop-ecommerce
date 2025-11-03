@@ -50,27 +50,35 @@ public class CartServiceImpl implements CartService {
 
         CartItem existingItem = cartItemRepository.findCartItemByProductIdAndCartId(cart.getCartId(), productId);
         if (existingItem != null) {
-            throw new APIException("Product " + product.getProductName() + " already exists in the cart");
+            validateInventory(product, quantity, existingItem.getQuantity());
+            existingItem.setQuantity(existingItem.getQuantity() + quantity);
+            existingItem.setDiscount(product.getDiscount());
+            existingItem.setProductPrice(product.getSpecialPrice());
+            updateSnapshot(existingItem, product);
+            cartItemRepository.save(existingItem);
+        } else {
+            validateInventory(product, quantity, 0);
+
+            CartItem newCartItem = new CartItem();
+
+            newCartItem.setCart(cart);
+            newCartItem.setQuantity(quantity);
+            newCartItem.setDiscount(product.getDiscount());
+            newCartItem.setProductPrice(product.getSpecialPrice());
+            newCartItem.setProductSnapshot(mapToSnapshot(product));
+
+            cart.getCartItems().add(newCartItem);
+            cartItemRepository.save(newCartItem);
         }
 
 
-        validateInventory(product, quantity, 0);
-
-        CartItem newCartItem = new CartItem();
-
-
-        newCartItem.setCart(cart);
-        newCartItem.setQuantity(quantity);
-        newCartItem.setDiscount(product.getDiscount());
-        newCartItem.setProductPrice(product.getSpecialPrice());
-        newCartItem.setProductSnapshot(mapToSnapshot(product));
-
-        cart.getCartItems().add(newCartItem);
-
-        cart.setTotalPrice(cart.getTotalPrice() + (product.getSpecialPrice() * quantity));
+        double totalPrice = cart.getCartItems().stream()
+                .mapToDouble(item -> item.getProductPrice() * item.getQuantity())
+                .sum();
+        cart.setTotalPrice(totalPrice);
 
         cartRepository.save(cart);
-        cartItemRepository.save(newCartItem);
+
 
         return mapToCartDTO(cartRepository.findById(cart.getCartId()).orElse(cart));
     }
