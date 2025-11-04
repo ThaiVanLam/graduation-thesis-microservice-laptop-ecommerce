@@ -5,18 +5,24 @@ spring:
   cloud:
     gateway:
       routes:
-        - id: product-service
+        - id: product-manager
           uri: lb://PRODUCT-SERVICE
           predicates:
-            - Path=/api/public/categories/**, /api/admin/categories/**, /api/public/products/**, /api/admin/products/**, /api/products/**
-        - id: user-service
+            - Path=/product-manager/**
+          filters:
+            - RewritePath=/product-manager/(?<segment>.*), /$\{segment}
+        - id: user-manager
           uri: lb://USER-SERVICE
           predicates:
-            - Path=/api/addresses/**, /api/users/addresses/**, /api/auth/**
-        - id: order-service
+            - Path=/user-manager/**
+          filters:
+            - RewritePath=/user-manager/(?<segment>.*), /$\{segment}
+        - id: order-manager
           uri: lb://ORDER-SERVICE
           predicates:
-            - Path=/api/carts/**, /api/cart/**
+            - Path=/order-manager/**
+          filters:
+            - RewritePath=/order-manager/(?<segment>.*), /$\{segment}
         - id: eureka-server
           uri: http://localhost:8761
           predicates:
