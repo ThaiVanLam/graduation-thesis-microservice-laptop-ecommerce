@@ -1,27 +1,9 @@
 spring:
   application:
     name: user-service
+  config:
+    import: optional:configserver:http://localhost:8888
 
-
-  datasource:
-    url: jdbc:mysql://localhost:3306/ecommerce_thesis_project_spring_boot_db_test_codex?serverTimezone=UTC
-    username: root
-    password: thailam123
-
-
-  jpa:
-    hibernate:
-      ddl-auto: update
-
-  app:
-    jwtSecret: mySecretKey123912738fsdfsdfsdfsdfsdfsdfsdfsdfsdfsdfsdfsdfsdfsdfgfdhrher
-    jwtExpirationMs: 3000000
-  ecom:
-    app:
-      jwtCookieName: springBootEcom
-
-frontend:
-  url: http://localhost:5173
-
-server:
-  port: 8082
+logging:
+  level:
+    org.springframework.cloud.config: DEBUG
