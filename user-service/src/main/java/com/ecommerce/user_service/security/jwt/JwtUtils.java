@@ -1,7 +1,6 @@
 package com.ecommerce.user_service.security.jwt;
 
 
-import com.ecommerce.user_service.security.services.UserDetailsImpl;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.MalformedJwtException;
@@ -12,6 +11,11 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.ecommerce.user_service.model.User;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -26,7 +30,7 @@ public class JwtUtils {
     private static final Logger logger = LoggerFactory.getLogger(JwtUtils.class);
 
     @Value("${spring.app.jwtExpirationMs}")
-    private int jwtExpirationMs;
+    private long jwtExpirationMs;
 
     @Value("${spring.app.jwtSecret}")
     private String jwtSecret;
@@ -43,44 +47,43 @@ public class JwtUtils {
         }
     }
 
-    public String getJwtFromHeader(HttpServletRequest httpServletRequest) {
-        String bearerToken = httpServletRequest.getHeader("Authorization");
-        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7);
-        }
-        return null;
-    }
-
-    public ResponseCookie generateJwtCookie(UserDetailsImpl userPrincipal) {
-        String jwt = generateTokenFromUsername(userPrincipal.getUsername());
-        ResponseCookie cookie = ResponseCookie.from(jwtCookie, jwt).path("/api").maxAge(24 * 60 * 60).httpOnly(false).build();
-        return cookie;
+    public ResponseCookie generateJwtCookie(String token) {
+        return ResponseCookie.from(jwtCookie, token)
+                .path("/api")
+                .maxAge(24 * 60 * 60)
+                .httpOnly(false)
+                .build();
     }
 
     public ResponseCookie getCleanJwtCookie() {
-        ResponseCookie cookie = ResponseCookie.from(jwtCookie, null).path("/api").build();
-        return cookie;
+        return ResponseCookie.from(jwtCookie, null)
+                .path("/api")
+                .build();
     }
 
-    //Generating Token from Username
-    public String generateTokenFromUsername(String username) {
-        return Jwts.builder().subject(username).issuedAt(new Date()).expiration(new Date((new Date().getTime() + jwtExpirationMs))).signWith(key()).compact();
+    public String generateToken(User user) {
+        List<String> roleNames = user.getRoles().stream()
+                .map(role -> role.getRoleName().name())
+                .collect(Collectors.toList());
+        return generateToken(user.getUserId(), user.getUserName(), user.getEmail(), roleNames);
     }
 
-    //Getting Username from JWT Token
-    public String getUserNameFromJWTToken(String token) {
-        return Jwts.parser().verifyWith((SecretKey) key()).build().parseSignedClaims(token).getPayload().getSubject();
+    public String generateToken(Long userId, String username, String email, Collection<String> roles) {
+        return Jwts.builder()
+                .subject(username)
+                .claim("userId", userId)
+                .claim("email", email)
+                .claim("roles", roles)
+                .issuedAt(new Date())
+                .expiration(new Date((new Date().getTime() + jwtExpirationMs)))
+                .signWith(key())
+                .compact();
     }
 
-    //Generate Signing Key
-    public Key key() {
-        return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
-    }
 
-    //Validate JWT Token
     public boolean validateJwtToken(String authToken) {
         try {
-            System.out.println("Validate");
+
             Jwts.parser().verifyWith((SecretKey) key()).build().parseSignedClaims(authToken);
             return true;
         } catch (MalformedJwtException e) {
@@ -93,5 +96,9 @@ public class JwtUtils {
             logger.error("JWT claims string is empty: {}", e.getMessage());
         }
         return false;
+    }
+
+    private Key key() {
+        return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
     }
 }
