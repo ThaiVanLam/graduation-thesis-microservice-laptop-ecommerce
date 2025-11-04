@@ -15,11 +15,18 @@ spring:
     app:
       jwtCookieName: springBootEcom
 
-frontend:
-  url: http://localhost:5173
+project:
+  image: images/
+
+image:
+  base:
+    url: http://localhost:8080/images
 
 server:
-  port: 8082
+  port: 8081
+
+frontend:
+  url: http://localhost:5173
 
 eureka:
   client:
